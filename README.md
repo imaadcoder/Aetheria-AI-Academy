@@ -1,3 +1,4 @@
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -654,7 +655,7 @@
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
+        .replace(/\"/g, "&quot;")
         .replace(/'/g, "&#39;");
     }
 
@@ -716,6 +717,8 @@
       state.selectedCourse = courseTitle || null;
     }
 
+    // --- New: ensure submissions go to admin email and mailto fallback ---
+    const ADMIN_EMAIL = 'abida28125@gmail.com';
     const FORM_PROVIDER = window.FORM_PROVIDER || "local";
     const EMAILJS_CONFIG = {
       publicKey: window.EMAILJS_PUBLIC_KEY || "",
@@ -735,14 +738,30 @@
       return { ok: true, mode: "local-storage", entry };
     }
 
+    function sendEmailViaMailto(kind, payload) {
+      const subject = kind === 'enrollment' ? 'Enrollment Request - Aetheria AI Academy' : 'Contact Request - Aetheria AI Academy';
+      const body = [
+        `Name: ${payload.name || 'N/A'}`,
+        `Email: ${payload.email || 'N/A'}`,
+        `Phone: ${payload.phone || 'N/A'}`,
+        `Course: ${payload.course || 'N/A'}`,
+        '',
+        `Message:`,
+        payload.message || 'N/A',
+        '',
+        `Sent from: ${location.href}`
+      ].join('\n');
+
+      const mailto = `mailto:${encodeURIComponent(ADMIN_EMAIL)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(mailto, '_blank');
+      return { ok: true, mode: 'mailto' };
+    }
+
     async function submitFormData(kind, payload) {
       const hasEmailjsConfig =
-        EMAILJS_CONFIG.publicKey &&
-        !EMAILJS_CONFIG.publicKey.includes("YOUR") &&
-        EMAILJS_CONFIG.serviceId &&
-        !EMAILJS_CONFIG.serviceId.includes("YOUR") &&
-        EMAILJS_CONFIG.templateId &&
-        !EMAILJS_CONFIG.templateId.includes("YOUR");
+        EMAILJS_CONFIG.publicKey && !EMAILJS_CONFIG.publicKey.includes("YOUR") &&
+        EMAILJS_CONFIG.serviceId && !EMAILJS_CONFIG.serviceId.includes("YOUR") &&
+        EMAILJS_CONFIG.templateId && !EMAILJS_CONFIG.templateId.includes("YOUR");
 
       if (FORM_PROVIDER === "emailjs" && hasEmailjsConfig && window.emailjs) {
         try {
@@ -750,22 +769,25 @@
             window.emailjs.init(EMAILJS_CONFIG.publicKey);
           }
           const templateParams = {
-            subject: kind === "enrollment" ? "Enrollment Request - Aetheria AI Academy" : "Contact Request - Aetheria AI Academy",
+            subject: kind === 'enrollment' ? 'Enrollment Request - Aetheria AI Academy' : 'Contact Request - Aetheria AI Academy',
             name: payload.name,
             email: payload.email,
-            phone: payload.phone || "N/A",
-            course: payload.course || "N/A",
-            message: payload.message || "N/A",
+            phone: payload.phone || 'N/A',
+            course: payload.course || 'N/A',
+            message: payload.message || 'N/A',
+            to_email: ADMIN_EMAIL,
             type: kind
           };
           const result = await window.emailjs.send(EMAILJS_CONFIG.serviceId, EMAILJS_CONFIG.templateId, templateParams);
-          if (result && result.status === 200) return result;
+          if (result && result.status === 200) return { ok: true, mode: 'emailjs', result };
         } catch (error) {
-          console.warn("EmailJS failed, using fallback", error);
+          console.warn('EmailJS failed, using fallback', error);
         }
       }
 
-      return fallbackSubmission(kind, payload);
+      // fallback: store and open mail client
+      fallbackSubmission(kind, payload);
+      return sendEmailViaMailto(kind, payload);
     }
 
     async function handleFormSubmit(event, kind, statusElement) {
@@ -788,7 +810,7 @@
         form.reset();
       } catch (error) {
         console.error(error);
-        statusElement.textContent = "Submission failed. Please contact us directly.";
+        statusElement.textContent = "Submission failed. Please contact us directly at " + ADMIN_EMAIL;
       }
     }
 
